@@ -35,10 +35,8 @@ body {
     color: white;
 }
 
-img {
-    max-width: 300px;
-    display: block;
-    margin: 10px 0;
+pre {
+    white-space: pre-line;
 }
 </style>
 </head>
@@ -47,8 +45,26 @@ img {
 
 <h1>Тест</h1>
 
+<!-- 🔥 НОВЫЙ БЛОК -->
+<div style="margin-bottom:15px;">
+
+    <label>Сұрақ саны:</label>
+    <input type="number" id="countQ" placeholder="мысалы 50" style="width:80px;">
+
+    <br><br>
+
+    <label>Диапазон:</label>
+    <input type="number" id="rangeStart" placeholder="от" style="width:60px;">
+    <input type="number" id="rangeEnd" placeholder="до" style="width:60px;">
+
+    <button onclick="generateRandomRange()">Бастау</button>
+
+</div>
+
 <button onclick="shuffleQuestions()">Барлық сұрақтарды араластыру</button>
+<button onclick="shuffleCurrentPage()">Осы беттегі сұрақтарды араластыру</button>
 <button onclick="resetAll()">Қайта бастау</button>
+<button onclick="showAllAnswers()">Жауап көрсету</button>
 
 <div id="quiz"></div>
 <div id="pagination"></div>
@@ -59,30 +75,81 @@ let currentPage = 1;
 const questionsPerPage = 30;
 let allQuestions = [];
 
-// 🚀 ЗАГРУЗКА .qst
 async function loadTest() {
-    const response = await fetch('test.qst');
+    const response = await fetch('test.txt');
     const text = await response.text();
 
     allQuestions = text
-        .split('<question>')
+        .split('~~')
         .map(q => q.trim())
         .filter(q => q.length > 0);
 
     renderPage(currentPage);
     renderPagination();
 }
+    
+function showAllAnswers() {
+    const questions = document.querySelectorAll('.question');
 
-// 📄 ОТРИСОВКА СТРАНИЦЫ
+    questions.forEach(q => {
+        const resultDiv = q.querySelector('[id^="result"]');
+
+        if (!resultDiv) return;
+
+        const qIndex = parseInt(resultDiv.id.replace('result', ''));
+
+        // ищем все варианты ответа
+        const inputs = q.querySelectorAll('input');
+
+        let correctValues = [];
+
+        // берем правильные ответы из уже сохранённого результата проверки нельзя,
+        // поэтому пересчитаем из allQuestions
+        const block = allQuestions[qIndex];
+
+        if (!block) return;
+
+        const answerMatch = block.match(/\{@([A-Z]+)@\}/);
+        const correctLetters = answerMatch ? answerMatch[1].split('') : ['A'];
+
+        const cleanBlock = block.replace(/\{@[A-Z]+@\}/, '');
+
+        const parts = cleanBlock
+            .split('@@')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+
+        const variants = parts.slice(1);
+
+        correctValues = correctLetters.map(l => variants[l.charCodeAt(0) - 65]);
+
+        // показать правильные варианты
+        inputs.forEach(inp => {
+            if (correctValues.includes(inp.value)) {
+                inp.parentElement.style.color = 'green';
+                inp.parentElement.style.fontWeight = 'bold';
+            }
+        });
+
+        // вывести текст ответа
+        resultDiv.innerHTML =
+            `✔ Дұрыс жауап: <b>${correctValues.join(', ')}</b>`;
+        resultDiv.className = 'correct';
+    });
+}
+    
 function renderPage(page) {
+    const quiz = document.getElementById('quiz');
+    quiz.innerHTML = '';
+
     const start = (page - 1) * questionsPerPage;
     const end = page * questionsPerPage;
 
     const pageQuestions = allQuestions.slice(start, end);
+
     renderCustomQuestions(pageQuestions, start);
 }
 
-// 🧠 ОСНОВНАЯ ЛОГИКА
 function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
 
     const quiz = document.getElementById('quiz');
@@ -90,27 +157,23 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
 
     questionsArray.forEach((block, index) => {
 
-        const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+        const answerMatch = block.match(/\{@([A-Z]+)@\}/);
+        const correctLetters = answerMatch ? answerMatch[1].split('') : ['A'];
 
-        let questionText = '';
-        let variants = [];
-        let image = null;
+        const isMulti = correctLetters.length > 1;
 
-        lines.forEach(line => {
+        const cleanBlock = block.replace(/\{@[A-Z]+@\}/, '');
 
-            if (line.startsWith('<variant>')) {
-                variants.push(line.replace('<variant>', '').trim());
-            } 
-            else if (line.startsWith('<img>')) {
-                image = line.replace('<img>', '').trim();
-            }
-            else {
-                questionText += line + ' ';
-            }
+        const parts = cleanBlock
+            .split('@@')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
 
-        });
+        const question = parts[0];
+        const variants = parts.slice(1);
 
-        const correctValues = [variants[0]]; // ✅ первый всегда правильный
+        const correctValues = correctLetters.map(l => variants[l.charCodeAt(0) - 65]);
+
         const shuffled = shuffle([...variants]);
 
         const qIndex = globalStartIndex + index;
@@ -119,16 +182,10 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
         div.className = 'question';
 
         const p = document.createElement('p');
-        p.textContent = (qIndex + 1) + '. ' + questionText;
+        p.style.whiteSpace = 'pre-line';
+        p.textContent = (qIndex + 1) + '. ' + question;
 
         div.appendChild(p);
-
-        // 🖼️ картинка
-        if (image) {
-            const img = document.createElement('img');
-            img.src = image;
-            div.appendChild(img);
-        }
 
         const result = document.createElement('div');
         result.id = 'result' + qIndex;
@@ -139,13 +196,29 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
             label.className = 'variant';
 
             const input = document.createElement('input');
-            input.type = 'radio';
+
+            input.type = isMulti ? 'checkbox' : 'radio';
             input.name = 'q' + qIndex;
             input.value = v;
 
             input.addEventListener('change', () => {
-                checkAnswer(qIndex, [v], correctValues);
-                disableAll(qIndex);
+
+                const selectedInputs =
+                    document.querySelectorAll(`input[name="q${qIndex}"]:checked`);
+
+                const selectedValues =
+                    Array.from(selectedInputs).map(i => i.value);
+
+                if (!isMulti) {
+                    checkAnswer(qIndex, selectedValues, correctValues);
+                    disableAll(qIndex);
+                    return;
+                }
+
+                if (selectedValues.length === correctValues.length) {
+                    checkAnswer(qIndex, selectedValues, correctValues);
+                    disableAll(qIndex);
+                }
             });
 
             label.appendChild(input);
@@ -159,28 +232,30 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
     });
 }
 
-// ✅ ПРОВЕРКА
 function checkAnswer(qIndex, selectedValues, correctValues) {
     const result = document.getElementById('result' + qIndex);
 
-    const isCorrect = selectedValues[0] === correctValues[0];
+    const isCorrect =
+        selectedValues.length === correctValues.length &&
+        selectedValues.every(v => correctValues.includes(v));
 
     if (isCorrect) {
         result.textContent = 'Дұрыс ✅';
         result.className = 'correct';
     } else {
-        result.innerHTML = `Қате ❌<br>Дұрыс жауап: <b>${correctValues[0]}</b>`;
+        result.innerHTML = `
+            Қате ❌<br>
+            Дұрыс жауаптар: <b>${correctValues.join(', ')}</b>
+        `;
         result.className = 'incorrect';
     }
 }
 
-// 🔒 БЛОКИРОВКА
 function disableAll(qIndex) {
     document.querySelectorAll(`input[name="q${qIndex}"]`)
         .forEach(el => el.disabled = true);
 }
 
-// 🔀 ПЕРЕМЕШАТЬ
 function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         let j = Math.floor(Math.random() * (i + 1));
@@ -189,7 +264,6 @@ function shuffle(arr) {
     return arr;
 }
 
-// 🔀 ВСЕ ВОПРОСЫ
 function shuffleQuestions() {
     allQuestions = shuffle([...allQuestions]);
     currentPage = 1;
@@ -197,7 +271,20 @@ function shuffleQuestions() {
     renderPagination();
 }
 
-// 📄 ПАГИНАЦИЯ
+function shuffleCurrentPage() {
+    const start = (currentPage - 1) * questionsPerPage;
+    const end = start + questionsPerPage;
+
+    const part = allQuestions.slice(start, end);
+    const shuffled = shuffle([...part]);
+
+    for (let i = 0; i < shuffled.length; i++) {
+        allQuestions[start + i] = shuffled[i];
+    }
+
+    renderPage(currentPage);
+}
+
 function renderPagination() {
     const div = document.getElementById('pagination');
     div.innerHTML = '';
@@ -220,9 +307,33 @@ function renderPagination() {
     }
 }
 
-// 🔄 СБРОС
 function resetAll() {
     loadTest();
+}
+
+/* 🔥 ГЛАВНАЯ НОВАЯ ФУНКЦИЯ */
+function generateRandomRange() {
+
+    const count = parseInt(document.getElementById('countQ').value);
+    let start = parseInt(document.getElementById('rangeStart').value) - 1;
+    let end = parseInt(document.getElementById('rangeEnd').value);
+
+    if (!count || isNaN(start) || isNaN(end) || start < 0 || end <= start) {
+        alert('Қате енгізу');
+        return;
+    }
+
+    if (end > allQuestions.length) end = allQuestions.length;
+
+    let range = allQuestions.slice(start, end);
+
+    range = shuffle([...range]);
+
+    const selected = range.slice(0, count);
+
+    document.getElementById('pagination').innerHTML = '';
+
+    renderCustomQuestions(selected, start);
 }
 
 loadTest();
