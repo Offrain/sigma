@@ -61,18 +61,48 @@ let currentPage = 1;
 const questionsPerPage = 30;
 let allQuestions = [];
 
+/* =========================
+   LOAD + PARSE
+========================= */
+
 async function loadTest() {
     const response = await fetch('test.txt');
     const text = await response.text();
 
-    allQuestions = text
-        .split('~~')
-        .map(q => q.trim())
-        .filter(q => q.length > 0);
+    allQuestions = parseQuestions(text);
 
     renderPage(currentPage);
     renderPagination();
 }
+
+function parseQuestions(text) {
+
+    const blocks = text.split(/<question>/)
+        .map(b => b.trim())
+        .filter(b => b.length > 0);
+
+    return blocks.map(block => {
+
+        const questionMatch = block.match(/^(.*?)(<img>|<variant>)/s);
+        const question = questionMatch ? questionMatch[1].trim() : '';
+
+        const imgMatch = block.match(/<img>(.*?)\n/);
+        const image = imgMatch ? imgMatch[1].trim() : null;
+
+        const variants = [...block.matchAll(/<variant>(.*)/g)]
+            .map(m => m[1].trim());
+
+        return {
+            question,
+            image,
+            variants
+        };
+    });
+}
+
+/* =========================
+   RENDER
+========================= */
 
 function renderPage(page) {
     const start = (page - 1) * questionsPerPage;
@@ -87,24 +117,10 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
     const quiz = document.getElementById('quiz');
     quiz.innerHTML = '';
 
-    questionsArray.forEach((block, index) => {
+    questionsArray.forEach((q, index) => {
 
-        // 📌 question
-        const questionMatch = block.match(/<question>([\s\S]*?)(<img>|<variant>)/);
-        const question = questionMatch ? questionMatch[1].trim() : '';
-
-        // 📌 image
-        const imgMatch = block.match(/<img>(.*?)\n/);
-        const imageUrl = imgMatch ? imgMatch[1].trim() : null;
-
-        // 📌 variants
-        const variants = [...block.matchAll(/<variant>(.*)/g)]
-            .map(m => m[1].trim());
-
-        if (variants.length === 0) return;
-
-        const correctValues = [variants[0]]; // первый = правильный
-        const shuffled = shuffle([...variants]);
+        const correctValues = [q.variants[0]];
+        const shuffled = shuffle([...q.variants]);
 
         const qIndex = globalStartIndex + index;
 
@@ -112,14 +128,13 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
         div.className = 'question';
 
         const p = document.createElement('p');
-        p.textContent = (qIndex + 1) + '. ' + question;
+        p.textContent = (qIndex + 1) + '. ' + q.question;
 
         div.appendChild(p);
 
-        // 📌 картинка
-        if (imageUrl) {
+        if (q.image) {
             const img = document.createElement('img');
-            img.src = imageUrl;
+            img.src = q.image;
             div.appendChild(img);
         }
 
@@ -153,6 +168,10 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
     });
 }
 
+/* =========================
+   LOGIC
+========================= */
+
 function checkAnswer(qIndex, selectedValues, correctValues) {
     const result = document.getElementById('result' + qIndex);
 
@@ -177,6 +196,10 @@ function disableAll(qIndex) {
         .forEach(el => el.disabled = true);
 }
 
+/* =========================
+   UTILS
+========================= */
+
 function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         let j = Math.floor(Math.random() * (i + 1));
@@ -191,6 +214,10 @@ function shuffleQuestions() {
     renderPage(currentPage);
     renderPagination();
 }
+
+/* =========================
+   PAGINATION
+========================= */
 
 function renderPagination() {
     const div = document.getElementById('pagination');
@@ -213,6 +240,10 @@ function renderPagination() {
         div.appendChild(btn);
     }
 }
+
+/* =========================
+   OTHER
+========================= */
 
 function resetAll() {
     loadTest();
