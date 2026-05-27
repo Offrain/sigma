@@ -35,10 +35,6 @@ body {
     color: white;
 }
 
-pre {
-    white-space: pre-line;
-}
-
 img {
     max-width: 400px;
     display: block;
@@ -52,21 +48,7 @@ img {
 
 <h1>Тест</h1>
 
-<div style="margin-bottom:15px;">
-    <label>Сұрақ саны:</label>
-    <input type="number" id="countQ" style="width:80px;">
-
-    <br><br>
-
-    <label>Диапазон:</label>
-    <input type="number" id="rangeStart" style="width:60px;">
-    <input type="number" id="rangeEnd" style="width:60px;">
-
-    <button onclick="generateRandomRange()">Бастау</button>
-</div>
-
 <button onclick="shuffleQuestions()">Барлық сұрақтарды араластыру</button>
-<button onclick="shuffleCurrentPage()">Осы беттегі сұрақтарды араластыру</button>
 <button onclick="resetAll()">Қайта бастау</button>
 <button onclick="showAllAnswers()">Жауап көрсету</button>
 
@@ -107,33 +89,21 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
 
     questionsArray.forEach((block, index) => {
 
-        const answerMatch = block.match(/\{@([A-Z]+)@\}/);
-        const correctLetters = answerMatch ? answerMatch[1].split('') : ['A'];
+        // 📌 question
+        const questionMatch = block.match(/<question>([\s\S]*?)(<img>|<variant>)/);
+        const question = questionMatch ? questionMatch[1].trim() : '';
 
-        const isMulti = correctLetters.length > 1;
+        // 📌 image
+        const imgMatch = block.match(/<img>(.*?)\n/);
+        const imageUrl = imgMatch ? imgMatch[1].trim() : null;
 
-        const cleanBlock = block.replace(/\{@[A-Z]+@\}/, '');
+        // 📌 variants
+        const variants = [...block.matchAll(/<variant>(.*)/g)]
+            .map(m => m[1].trim());
 
-        const parts = cleanBlock
-            .split('@@')
-            .map(p => p.trim())
-            .filter(p => p.length > 0);
+        if (variants.length === 0) return;
 
-        let question = parts[0];
-        let variants = parts.slice(1);
-
-        // 📌 КАРТИНКА (последний элемент URL)
-        let imageUrl = null;
-
-        const last = variants[variants.length - 1];
-
-        if (last && (last.startsWith('http://') || last.startsWith('https://'))) {
-            imageUrl = last;
-            variants.pop();
-        }
-
-        const correctValues = correctLetters.map(l => variants[l.charCodeAt(0) - 65]);
-
+        const correctValues = [variants[0]]; // первый = правильный
         const shuffled = shuffle([...variants]);
 
         const qIndex = globalStartIndex + index;
@@ -146,7 +116,7 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
 
         div.appendChild(p);
 
-        // 📌 вывод картинки
+        // 📌 картинка
         if (imageUrl) {
             const img = document.createElement('img');
             img.src = imageUrl;
@@ -163,28 +133,13 @@ function renderCustomQuestions(questionsArray, globalStartIndex = 0) {
 
             const input = document.createElement('input');
 
-            input.type = isMulti ? 'checkbox' : 'radio';
+            input.type = 'radio';
             input.name = 'q' + qIndex;
             input.value = v;
 
             input.addEventListener('change', () => {
-
-                const selectedInputs =
-                    document.querySelectorAll(`input[name="q${qIndex}"]:checked`);
-
-                const selectedValues =
-                    Array.from(selectedInputs).map(i => i.value);
-
-                if (!isMulti) {
-                    checkAnswer(qIndex, selectedValues, correctValues);
-                    disableAll(qIndex);
-                    return;
-                }
-
-                if (selectedValues.length === correctValues.length) {
-                    checkAnswer(qIndex, selectedValues, correctValues);
-                    disableAll(qIndex);
-                }
+                checkAnswer(qIndex, [v], correctValues);
+                disableAll(qIndex);
             });
 
             label.appendChild(input);
@@ -211,7 +166,7 @@ function checkAnswer(qIndex, selectedValues, correctValues) {
     } else {
         result.innerHTML = `
             Қате ❌<br>
-            Дұрыс жауаптар: <b>${correctValues.join(', ')}</b>
+            Дұрыс жауап: <b>${correctValues[0]}</b>
         `;
         result.className = 'incorrect';
     }
@@ -235,20 +190,6 @@ function shuffleQuestions() {
     currentPage = 1;
     renderPage(currentPage);
     renderPagination();
-}
-
-function shuffleCurrentPage() {
-    const start = (currentPage - 1) * questionsPerPage;
-    const end = start + questionsPerPage;
-
-    const part = allQuestions.slice(start, end);
-    const shuffled = shuffle([...part]);
-
-    for (let i = 0; i < shuffled.length; i++) {
-        allQuestions[start + i] = shuffled[i];
-    }
-
-    renderPage(currentPage);
 }
 
 function renderPagination() {
@@ -278,36 +219,9 @@ function resetAll() {
 }
 
 function showAllAnswers() {
-    const questions = document.querySelectorAll('.question');
-
-    questions.forEach(q => {
-        const resultDiv = q.querySelector('[id^="result"]');
-        if (resultDiv) {
-            resultDiv.style.display = 'block';
-        }
+    document.querySelectorAll('[id^="result"]').forEach(r => {
+        r.style.display = 'block';
     });
-}
-
-function generateRandomRange() {
-
-    const count = parseInt(document.getElementById('countQ').value);
-    let start = parseInt(document.getElementById('rangeStart').value) - 1;
-    let end = parseInt(document.getElementById('rangeEnd').value);
-
-    if (!count || isNaN(start) || isNaN(end) || start < 0 || end <= start) {
-        alert('Қате енгізу');
-        return;
-    }
-
-    if (end > allQuestions.length) end = allQuestions.length;
-
-    let range = allQuestions.slice(start, end);
-    range = shuffle([...range]);
-
-    const selected = range.slice(0, Math.min(count, range.length));
-
-    document.getElementById('pagination').innerHTML = '';
-    renderCustomQuestions(selected, start);
 }
 
 loadTest();
